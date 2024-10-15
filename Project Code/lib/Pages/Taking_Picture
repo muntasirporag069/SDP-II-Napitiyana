@@ -1,0 +1,275 @@
+import 'dart:io';
+
+import 'package:barber_pogi/pages/login.dart';
+import 'package:barber_pogi/services/database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+class TakingPicture extends StatefulWidget {
+  const TakingPicture({super.key});
+
+  @override
+  State<TakingPicture> createState() => _TakingPictureState();
+}
+
+class _TakingPictureState extends State<TakingPicture> {
+  String? mail;
+
+  TextEditingController mailController = new TextEditingController();
+  final _formkey = GlobalKey<FormState>();
+
+  bool isNIDPictureTaken = false;
+  bool isSelfPictureTaken = false;
+  File? _nidImage;
+  File? _selfImage;
+
+  Future<void> _pickImageWithCamera(Function(File?) setImage) async {
+    final image = await ImagePicker().pickImage(source: ImageSource.camera);
+
+    if (image != null) {
+      setState(() {
+        setImage(File(image.path));
+      });
+    }
+  }
+
+ saveimage() async {
+  if (mail != null && _nidImage != null && _selfImage != null) {
+    try {
+      // Upload NID image to Firebase Storage
+      String nidFileName = "nid_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      Reference nidRef = FirebaseStorage.instance.ref().child('nid_images/$nidFileName');
+      UploadTask nidUploadTask = nidRef.putFile(_nidImage!);
+      TaskSnapshot nidSnapshot = await nidUploadTask;
+      String nidImageUrl = await nidSnapshot.ref.getDownloadURL();
+
+      // Upload Self image to Firebase Storage
+      String selfFileName = "self_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      Reference selfRef = FirebaseStorage.instance.ref().child('self_images/$selfFileName');
+      UploadTask selfUploadTask = selfRef.putFile(_selfImage!);
+      TaskSnapshot selfSnapshot = await selfUploadTask;
+      String selfImageUrl = await selfSnapshot.ref.getDownloadURL();
+
+      // Save the images' URLs along with the email in Firestore
+      Map<String, dynamic> userimages = {
+        "Gmail": mailController.text,
+        "NidImageUrl": nidImageUrl,
+        "SelfImageUrl": selfImageUrl,
+      };
+      await DatabaseMethods().saveImage(userimages);
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+        "Images uploaded and saved successfully",
+        style: TextStyle(fontSize: 20.0),
+      )));
+    } catch (e) {
+      print("Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+        "Error uploading images: $e",
+        style: TextStyle(fontSize: 20.0),
+      )));
+    }
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+      "Please provide all required information and images",
+      style: TextStyle(fontSize: 20.0),
+    )));
+  }
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        body: SingleChildScrollView(
+      child: Container(
+        child: Stack(
+          children: [
+            Container(
+              padding: EdgeInsets.only(top: 50.0, left: 30.0),
+              height: MediaQuery.of(context).size.height / 2,
+              width: MediaQuery.of(context).size.width,
+              decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [
+                Color(0XFFB91635),
+                Color(0xff621d3c),
+                Color(0xff311937)
+              ])),
+              child: Text(
+                "Take Pictures",
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 32.0,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+            Container(
+              padding: EdgeInsets.only(
+                  top: 40.0, left: 30.0, right: 30.0, bottom: 30.0),
+              margin:
+                  EdgeInsets.only(top: MediaQuery.of(context).size.height / 4),
+              height: MediaQuery.of(context).size.height,
+              width: MediaQuery.of(context).size.width,
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(40),
+                      topRight: Radius.circular(40))),
+              child: Form(
+                key: _formkey,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Gmail",
+                        style: TextStyle(
+                            color: Color(0XFFB91635),
+                            fontSize: 23.0,
+                            fontWeight: FontWeight.w500),
+                      ),
+                      TextFormField(
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return "Please Enter E-mail";
+                          }
+                          return null;
+                        },
+                        controller: mailController,
+                        decoration: InputDecoration(
+                            hintText: "Gmail",
+                            prefixIcon: Icon(Icons.mail_outline)),
+                      ),
+                      SizedBox(
+                        height: 40.0,
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          _pickImageWithCamera((file) {
+                            _nidImage = file;
+                            isNIDPictureTaken = true;
+                          });
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(vertical: 10.0),
+                          width: MediaQuery.of(context).size.width,
+                          decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [
+                                Color(0XFFB91635),
+                                Color(0xff621d3c),
+                                Color(0xff311937),
+                              ]),
+                              borderRadius: BorderRadius.circular(30.0)),
+                          child: Center(
+                              child: Text(
+                            "Take NID Picture",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24.0,
+                                fontWeight: FontWeight.bold),
+                          )),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 20.0,
+                      ),
+                      if (_nidImage != null)
+                        Center(
+                          child: Image.file(
+                            _nidImage!,
+                            height: 100,
+                            width: 100,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      SizedBox(
+                        height: 20.0,
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          _pickImageWithCamera((file) {
+                            _selfImage = file;
+                            isSelfPictureTaken = true;
+                          });
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(vertical: 10.0),
+                          width: MediaQuery.of(context).size.width,
+                          decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [
+                                Color(0XFFB91635),
+                                Color(0xff621d3c),
+                                Color(0xff311937),
+                              ]),
+                              borderRadius: BorderRadius.circular(30.0)),
+                          child: Center(
+                              child: Text(
+                            "Take Your Picture",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24.0,
+                                fontWeight: FontWeight.bold),
+                          )),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 20.0,
+                      ),
+                      if (_selfImage != null)
+                        Center(
+                          child: Image.file(
+                            _selfImage!,
+                            height: 100,
+                            width: 100,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      SizedBox(
+                        height: 60.0,
+                      ),
+                      if (isNIDPictureTaken && isSelfPictureTaken)
+                        GestureDetector(
+                          onTap: () {
+                            if (_formkey.currentState!.validate()) {
+                              setState(() {
+                                mail = mailController.text;
+                              });
+                            }
+                            saveimage();
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => LogIN()));
+                          },
+                          child: Container(
+                            padding: EdgeInsets.symmetric(vertical: 10.0),
+                            width: MediaQuery.of(context).size.width,
+                            decoration: BoxDecoration(
+                                gradient: LinearGradient(colors: [
+                                  Color(0XFFB91635),
+                                  Color(0xff621d3c),
+                                  Color(0xff311937),
+                                ]),
+                                borderRadius: BorderRadius.circular(30.0)),
+                            child: Center(
+                                child: Text(
+                              "Done",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24.0,
+                                  fontWeight: FontWeight.bold),
+                            )),
+                          ),
+                        ),
+                    ]),
+              ),
+            )
+          ],
+        ),
+      ),
+    ));
+  }
+}
