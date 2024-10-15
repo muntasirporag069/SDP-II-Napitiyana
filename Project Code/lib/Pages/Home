@@ -1,0 +1,463 @@
+import 'package:barber_pogi/pages/booking.dart';
+import 'package:barber_pogi/pages/login.dart';
+import 'package:barber_pogi/pages/trainee.dart';
+import 'package:barber_pogi/pages/visit_gallery.dart';
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
+class Home extends StatefulWidget {
+  const Home({super.key});
+
+  @override
+  State<Home> createState() => _HomeState();
+}
+
+class _HomeState extends State<Home> {
+  String? shopname;
+  String? username;
+  String? mail;
+  String? userImageUrl;
+
+  getthedatafromsharedpref() async {
+    shopname = await SharedpreferenceHelper().getShopName();
+    await SharedpreferenceHelper().saveShopName(shopname!);
+    //print("Shop Name Retrieved: $shopname"); // Check if this is null or not
+    username = await SharedpreferenceHelper().getUserName();
+    await SharedpreferenceHelper().saveUserName(username!);
+    mail = await SharedpreferenceHelper().getUserEmail();
+    setState(() {}); // Ensure state is updated
+  }
+
+  Future<void> _initializeUserData() async {
+    mail = await SharedpreferenceHelper().getUserEmail();
+    if (mail != null) {
+      await _fetchUserImage(mail!);
+    } else {
+      print('Email is null');
+    }
+  }
+
+  Future<void> _fetchUserImage(String mail) async {
+    try {
+      final imageDoc = await FirebaseFirestore.instance
+          .collection('Images')
+          .where('Gmail', isEqualTo: mail)
+          .limit(1)
+          .get();
+
+      if (imageDoc.docs.isNotEmpty) {
+        final imageData = imageDoc.docs.first.data();
+        userImageUrl = imageData['SelfImageUrl'];
+        print("Fetched Image URL: $userImageUrl");
+        await SharedpreferenceHelper().saveUserImage(userImageUrl!);
+        setState(() {});
+      }
+    } catch (e) {
+      print("Failed to fetch user image. Error: $e");
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getthedatafromsharedpref();
+    _initializeUserData(); // Ensure user data is initialized right away
+  }
+
+  getontheload() async {
+    await getthedatafromsharedpref();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        body: SingleChildScrollView(
+            child: Container(
+                margin: EdgeInsets.only(top: 50.0, left: 20.0, right: 20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Hello ${username ?? ''}",
+                                style: TextStyle(
+                                    color: Color.fromARGB(189, 0, 0, 0),
+                                    fontSize: 24.0,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                              Text(
+                                shopname != null
+                                    ? "Saloon: $shopname"
+                                    : "Loading...",
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 24.0,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(30),
+                            child: userImageUrl != null
+                                ? Image.network(
+                              userImageUrl!,
+                              height: 60,
+                              width: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Icon(Icons.person,
+                                    size: 60, color: Colors.grey);
+                              },
+                            )
+                                : Icon(Icons.person,
+                                size: 60, color: Colors.grey),
+                          ),
+                        ]),
+                    SizedBox(
+                      height: 20.0,
+                    ),
+                    Divider(
+                      color: Colors.black,
+                    ),
+                    SizedBox(
+                      height: 20.0,
+                    ),
+                    Text(
+                      "Services",
+                      style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 24.0,
+                          fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(
+                      height: 20.0,
+                    ),
+                    Row(
+                      children: [
+                        Flexible(
+                            fit: FlexFit.tight,
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) => Booking(
+                                            service: 'Classic Shaving')));
+                              },
+                              child: Container(
+                                height: 150,
+                                decoration: BoxDecoration(
+                                    color: Color(0xFFe29452),
+                                    borderRadius: BorderRadius.circular(20)),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Image.asset("images/shaving.png",
+                                        height: 80,
+                                        width: 80,
+                                        fit: BoxFit.cover),
+                                    SizedBox(
+                                      height: 10.0,
+                                    ),
+                                    Text(
+                                      "Classic Shaving",
+                                      style: TextStyle(
+                                          color: Colors.black,
+                                          fontSize: 18.0,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )),
+                        SizedBox(
+                          width: 20.0,
+                        ),
+                        Flexible(
+                          fit: FlexFit.tight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          Booking(service: 'Hair Washing')));
+                            },
+                            child: Container(
+                              height: 150,
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFe29452),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset("images/hair.png",
+                                      height: 80, width: 80, fit: BoxFit.cover),
+                                  SizedBox(
+                                    height: 10.0,
+                                  ),
+                                  Text(
+                                    "Hair Washing",
+                                    style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 18.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 20.0,
+                    ),
+                    Row(
+                      children: [
+                        Flexible(
+                          fit: FlexFit.tight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          Booking(service: 'Hair Cutting')));
+                            },
+                            child: Container(
+                              height: 150,
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFe29452),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset("images/cutting.png",
+                                      height: 80, width: 80, fit: BoxFit.cover),
+                                  SizedBox(
+                                    height: 10.0,
+                                  ),
+                                  Text(
+                                    "Hair Cutting",
+                                    style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 18.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 20.0,
+                        ),
+                        Flexible(
+                          fit: FlexFit.tight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          Booking(service: 'Beard Trimming')));
+                            },
+                            child: Container(
+                              height: 150,
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFe29452),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset("images/beard.png",
+                                      height: 80, width: 80, fit: BoxFit.cover),
+                                  SizedBox(
+                                    height: 10.0,
+                                  ),
+                                  Text(
+                                    "Beard Trimming",
+                                    style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 18.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 20.0,
+                    ),
+                    Row(
+                      children: [
+                        Flexible(
+                          fit: FlexFit.tight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          Booking(service: 'Facials')));
+                            },
+                            child: Container(
+                              height: 150,
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFe29452),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset("images/facials.png",
+                                      height: 80, width: 80, fit: BoxFit.cover),
+                                  SizedBox(
+                                    height: 10.0,
+                                  ),
+                                  Text(
+                                    "Facials",
+                                    style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 18.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 20.0,
+                        ),
+                        Flexible(
+                          fit: FlexFit.tight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => Booking(
+                                          service: 'Kids HairCutting')));
+                            },
+                            child: Container(
+                              height: 150,
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFe29452),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset("images/kids.png",
+                                      height: 80, width: 80, fit: BoxFit.cover),
+                                  SizedBox(
+                                    height: 10.0,
+                                  ),
+                                  Text(
+                                    "Kids HairCUtting",
+                                    style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 18.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 20.0,
+                    ),
+                    Row(
+                      children: [
+                        Flexible(
+                          fit: FlexFit.tight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => Trainee()));
+                            },
+                            child: Container(
+                              height: 150,
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFe29452),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset("images/trainee.png",
+                                      height: 80, width: 80, fit: BoxFit.cover),
+                                  SizedBox(
+                                    height: 10.0,
+                                  ),
+                                  Text(
+                                    "Trainee",
+                                    style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 18.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 20.0,
+                        ),
+                        Flexible(
+                          fit: FlexFit.tight,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => VisitGallery()) // This clears all previous routes.
+                              );
+                            },
+                            child: Container(
+                              height: 150,
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFe29452),
+                                  borderRadius: BorderRadius.circular(20)),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset("images/gallery.png",
+                                      height: 80, width: 80, fit: BoxFit.cover),
+                                  SizedBox(
+                                    height: 10.0,
+                                  ),
+                                  Text(
+                                    "Gallery",
+                                    style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 18.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  ],
+                ))));
+  }
+}
