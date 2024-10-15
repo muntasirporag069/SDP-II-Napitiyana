@@ -1,0 +1,122 @@
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
+class VisitGallery extends StatefulWidget {
+  const VisitGallery({super.key});
+
+  @override
+  State<VisitGallery> createState() => _VisitGalleryState();
+}
+
+class _VisitGalleryState extends State<VisitGallery> {
+  String? shopname, shopemail;
+  List<String> imageUrls = []; // List to store image URLs
+
+  @override
+  void initState() {
+    super.initState();
+    getthedatafromsharedpref();
+  }
+
+  // Fetch the shop name from shared preferences
+  getthedatafromsharedpref() async {
+    shopname = await SharedpreferenceHelper().getShopName();
+    setState(() {});
+    getShopEmailFromFirestore(); // Fetch email after retrieving the shop name
+  }
+
+  // Function to fetch shop email from the 'barbers' collection in Firestore
+  Future<void> getShopEmailFromFirestore() async {
+    try {
+      // Query the 'barbers' collection to get the shop email
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('barbers')
+          .where('Name', isEqualTo: shopname)
+          .limit(1) // Only fetch one document
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final data = querySnapshot.docs.first.data();
+        shopemail = data['Email'];
+
+        // After fetching the email, fetch salon images
+        if (shopemail != null) {
+          await fetchSalonImagesByEmail(shopemail!);
+        }
+      }
+    } catch (e) {
+      print("Error fetching shop email: $e");
+    }
+  }
+
+  // Function to fetch images from Firestore for the given shop email
+  Future<void> fetchSalonImagesByEmail(String shopemail) async {
+    try {
+      // Query the Images collection to get all images where Gmail matches shopEmail
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('Images')
+          .where('Gmail', isEqualTo: shopemail)
+          .get();
+
+      // Clear the imageUrls list to prevent duplication
+      imageUrls.clear();
+
+      // Check if documents are found
+      if (querySnapshot.docs.isNotEmpty) {
+        for (var doc in querySnapshot.docs) {
+          final data = doc.data();
+
+          // Check if 'salonImageUrls' is a list
+          if (data.containsKey('salonImageUrls') &&
+              data['salonImageUrls'] is List) {
+            List<dynamic> imageList = data['salonImageUrls'];
+            // Add all image URLs from the list
+            imageUrls.addAll(imageList.cast<String>());
+          } else if (data.containsKey('salonImageUrls')) {
+            // In case it's a single string (not a list)
+            imageUrls.add(data['salonImageUrls']);
+          }
+        }
+      }
+
+      setState(() {}); // Update the UI after fetching the images
+    } catch (e) {
+      print("Error fetching salon images: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title:
+        Text(shopname ?? 'Gallery'), // Display the shop name in the app bar
+      ),
+      body: imageUrls.isEmpty
+          ? const Center(
+          child: CircularProgressIndicator()) // Show loading indicator
+          : GridView.builder(
+        padding: const EdgeInsets.all(8.0),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, // Number of columns in the grid
+          crossAxisSpacing: 8.0,
+          mainAxisSpacing: 8.0,
+        ),
+        itemCount: imageUrls.length,
+        itemBuilder: (context, index) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(10.0),
+            child: Image.network(
+              imageUrls[index],
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(Icons.broken_image, size: 80);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
