@@ -1,0 +1,489 @@
+import 'package:barber_pogi/pages/locate_user.dart';
+import 'package:barber_pogi/pages/login.dart';
+import 'package:barber_pogi/services/database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+
+class Profile extends StatefulWidget {
+  const Profile({super.key});
+
+  @override
+  State<Profile> createState() => _ProfileState();
+}
+
+class _ProfileState extends State<Profile> {
+  String? username, email, userImageUrl, shopName, feedback;
+  Stream<QuerySnapshot>? bookingStream;
+
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
+  final TextEditingController feedbackController = TextEditingController();
+
+  Future<void> _getUserData() async {
+    email = await SharedpreferenceHelper().getUserEmail();
+    if (email != null) {
+      await _fetchUserData(email!);
+      await _fetchUserImage(email!);
+      setState(() {
+        bookingStream = DatabaseMethods().getBookingsUser(email!);
+      });
+    } else {
+      print("No email found in shared preferences.");
+    }
+  }
+
+  Future<void> _fetchUserData(String mail) async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .where('Email', isEqualTo: mail)
+          .limit(1)
+          .get();
+      if (userDoc.docs.isNotEmpty) {
+        final userData = userDoc.docs.first.data();
+        setState(() {
+          username = userData['Name'];
+        });
+        await SharedpreferenceHelper().saveUserName(username!);
+      }
+    } catch (e) {
+      print("Error fetching user data: $e");
+    }
+  }
+
+  Future<void> _fetchUserImage(String email) async {
+    try {
+      final imageDoc = await FirebaseFirestore.instance
+          .collection('Images')
+          .where('Gmail', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (imageDoc.docs.isNotEmpty) {
+        final imageData = imageDoc.docs.first.data();
+        setState(() {
+          userImageUrl = imageData['SelfImageUrl'];
+        });
+        await SharedpreferenceHelper().saveUserImage(userImageUrl!);
+      }
+    } catch (e) {
+      print("Failed to fetch user image: $e");
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _getUserData();
+  }
+
+  void _showFeedbackDialog(String shopName) {
+    double rating = 0.0; // Default rating
+    feedbackController.clear(); // Clear feedback on each new submission
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            height: MediaQuery.of(context).size.height * 0.5,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Leave Feedback for $shopName",
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 20),
+                  const Text("Rate the service:"),
+                  RatingBar.builder(
+                    initialRating: rating,
+                    minRating: 1,
+                    direction: Axis.horizontal,
+                    allowHalfRating: false,
+                    itemCount: 5,
+                    itemBuilder: (context, _) => Icon(
+                      Icons.star,
+                      color: Colors.amber,
+                    ),
+                    onRatingUpdate: (newRating) {
+                      rating = newRating;
+                    },
+                  ),
+                  SizedBox(height: 20),
+                  const Text("Your Feedback:"),
+                  TextField(
+                    controller: feedbackController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: "Write your feedback...",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text(
+                          "Cancel",
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      ElevatedButton(
+                        onPressed: () async {
+                          if (feedbackController.text.isNotEmpty) {
+                            // Feedback submission logic
+                            Map<String, dynamic> feedbackData = {
+                              "UserName": username,
+                              "Email": email,
+                              "ShopName": shopName,
+                              "Rating": rating,
+                              "Feedback": feedbackController.text,
+                              "Timestamp": FieldValue.serverTimestamp(),
+                            };
+                            await addFeedback(feedbackData);
+                            Navigator.of(context).pop();
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      "Please enter your feedback!")),
+                            );
+                          }
+                        },
+                        child: const Text("Submit"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _userBookings() {
+    if (bookingStream == null) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: bookingStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(child: Text("No bookings available."));
+        }
+
+        return SingleChildScrollView(
+          child: Column(
+            children: List.generate(snapshot.data!.docs.length, (index) {
+              DocumentSnapshot ds = snapshot.data!.docs[index];
+              String service = ds["Service"] ?? "N/A";
+              String shopname = ds["Shopname"] ?? "N/A";
+              String date = ds["Date"] ?? "N/A";
+              String time = ds["Time"] ?? "N/A";
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Material(
+                  elevation: 8.0,
+                  borderRadius: BorderRadius.circular(60),
+                  child: Container(
+                    padding: EdgeInsets.all(10.0),
+                    width: MediaQuery.of(context).size.width,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Color(0xFFe29452), // Maroon color
+                          Color(0xFFe29452),
+                          Color(0xFFe29452),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(60),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            SizedBox(width: 10.0),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(height: 10.0),
+                                  Text(
+                                    "Service: $service",
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(height: 5.0),
+                                  Text(
+                                    "Shop: $shopname",
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(height: 5.0),
+                                  Text(
+                                    "Date: $date",
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(height: 5.0),
+                                  Text(
+                                    "Time: $time",
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20.0,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () async {
+                                await DatabaseMethods().deleteBooking(ds.id);
+                              },
+                              child: Container(
+                                padding: EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                    color: Color(0xFFdf711a),
+                                    borderRadius: BorderRadius.circular(10.0)),
+                                child: const Text(
+                                  "Cancel",
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20.0,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 10.0),
+                            GestureDetector(
+                              onTap: () {
+                                _showFeedbackDialog(shopname);
+                              },
+                              child: Container(
+                                padding: EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                    color: Color(0xFFdf711a),
+                                    borderRadius: BorderRadius.circular(10.0)),
+                                child: const Text(
+                                  "Feedback",
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20.0,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 20.0),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Brown background (entire page)
+          Container(
+            color: const Color(0xFF3E2723), // Brown background
+          ),
+          // Maroon color with an "S"-shaped transition
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: ClipPath(
+              clipper: SShapeClipper(), // Custom clipper for the "S" curve
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.75, // Adjust height for maroon section
+                color: const Color(0xFF4E342E), // Maroon color
+              ),
+            ),
+          ),
+          // Scrollable content
+          SingleChildScrollView(
+            child: Container(
+              margin: EdgeInsets.symmetric(vertical: 50.0, horizontal: 20.0),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Welcome to Napitiyana",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24.0,
+                                fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                      SizedBox(
+                        width: 20,
+                      ),
+                      Flexible(
+                        fit: FlexFit.tight,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => LogIN()),
+                                  (Route<dynamic> route) =>
+                              false, // This clears all previous routes.
+                            );
+                          },
+                          child: Container(
+                            height: 50,
+                            width: 70,
+                            decoration: BoxDecoration(
+                                color: Color(0xFFe29452),
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Center(
+                              child: Text(
+                                "Log Out",
+                                style: TextStyle(
+                                    color: Colors.black,
+                                    fontSize: 14.0,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 20),
+                      Text(
+                        "$username",  // Display the username here
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24.0,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 20.0),
+                  Divider(color: Colors.white), // Updated to white for better contrast
+                  SizedBox(height: 30.0),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: userImageUrl != null
+                        ? Image.network(
+                      userImageUrl!,
+                      height: 200,
+                      width: 200,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(Icons.person,
+                            size: 100, color: Colors.grey);
+                      },
+                    )
+                        : Icon(Icons.person, size: 100, color: Colors.grey),
+                  ),
+                  SizedBox(height: 30.0),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (context) => LocateUser()));
+                    },
+                    child: Container(
+                      height: 50,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                          color: Color(0xFFe29452),
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Center(
+                        child: Text(
+                          "Book a Slot",
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 18.0,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 20,
+                  ),
+                  Divider(
+                    color: Colors.white, // Updated to white for maroon contrast
+                  ),
+                  SizedBox(
+                    height: 20.0,
+                  ),
+                  _userBookings(), // This now works correctly
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Custom clipper for the "S"-shaped curve between brown and maroon
+class SShapeClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    var path = Path();
+
+    // Start from the bottom left, slightly lower
+    path.lineTo(0, size.height * 0.8); // Left side lower
+
+    // Create an "S"-shaped curve, lifting the right side higher
+    path.quadraticBezierTo(size.width * 0.3, size.height * 0.9, size.width * 0.65, size.height * 0.7);
+    path.quadraticBezierTo(size.width * 0.85, size.height * 0.6, size.width, size.height * 0.65); // Right side higher
+
+    // Finish the bottom right
+    path.lineTo(size.width, 0);
+
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) {
+    return false;
+  }
+}
