@@ -1,0 +1,236 @@
+import 'package:barber_pogi/Barber/booking_barber.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:barber_pogi/services/database.dart';
+
+class UpdateGallery extends StatefulWidget {
+  const UpdateGallery({super.key});
+
+  @override
+  State<UpdateGallery> createState() => _UpdateGalleryState();
+}
+
+class _UpdateGalleryState extends State<UpdateGallery> {
+  String? mail;
+  TextEditingController mailController = new TextEditingController();
+  final _formkey = GlobalKey<FormState>();
+
+  // Replace the single image file with a list to store multiple images
+  List<File> _salonImages = [];
+  bool isSalonPicturesTaken = false;
+
+  Future<void> _pickImageWithCamera(Function(File) setImage) async {
+    final image = await ImagePicker().pickImage(source: ImageSource.camera);
+    if (image != null) {
+      setState(() {
+        setImage(File(image.path));
+      });
+    }
+  }
+
+  Future<void> saveImages() async {
+    if (mail != null && _salonImages.isNotEmpty) {
+      try {
+        // Loop through each image in the list and upload to Firebase
+        List<String> imageUrls = [];
+        for (var imageFile in _salonImages) {
+          String fileName = "salon_${DateTime.now().millisecondsSinceEpoch}.jpg";
+          Reference ref = FirebaseStorage.instance.ref().child('_salonImages/$fileName');
+          UploadTask uploadTask = ref.putFile(imageFile);
+          TaskSnapshot snapshot = await uploadTask;
+          String imageUrl = await snapshot.ref.getDownloadURL();
+          imageUrls.add(imageUrl);
+        }
+
+        // Save the images' URLs along with the email in Firestore
+        Map<String, dynamic> salonData = {
+          "Gmail": mailController.text,
+          "salonImageUrls": imageUrls,  // Save the list of URLs
+        };
+        await DatabaseMethods().saveSalonImage(salonData);
+
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+              "Images uploaded and saved successfully",
+              style: TextStyle(fontSize: 20.0),
+            )));
+      } catch (e) {
+        print("Error: $e");
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+              "Error uploading images: $e",
+              style: TextStyle(fontSize: 20.0),
+            )));
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            "Please provide all required information and images",
+            style: TextStyle(fontSize: 20.0),
+          )));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        body: SingleChildScrollView(
+          child: Container(
+            child: Stack(
+              children: [
+                Container(
+                  padding: EdgeInsets.only(top: 50.0, left: 30.0),
+                  height: MediaQuery.of(context).size.height / 2,
+                  width: MediaQuery.of(context).size.width,
+                  decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        Color(0XFFB91635),
+                        Color(0xff621d3c),
+                        Color(0xff311937)
+                      ])),
+                  child: Text(
+                    "Take Pictures",
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32.0,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.only(
+                      top: 40.0, left: 30.0, right: 30.0, bottom: 30.0),
+                  margin:
+                  EdgeInsets.only(top: MediaQuery.of(context).size.height / 4),
+                  height: MediaQuery.of(context).size.height,
+                  width: MediaQuery.of(context).size.width,
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(40),
+                          topRight: Radius.circular(40))),
+                  child: Form(
+                    key: _formkey,
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Gmail",
+                            style: TextStyle(
+                                color: Color(0XFFB91635),
+                                fontSize: 23.0,
+                                fontWeight: FontWeight.w500),
+                          ),
+                          TextFormField(
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return "Please Enter E-mail";
+                              }
+                              return null;
+                            },
+                            controller: mailController,
+                            decoration: InputDecoration(
+                                hintText: "Gmail",
+                                prefixIcon: Icon(Icons.mail_outline)),
+                          ),
+                          SizedBox(
+                            height: 40.0,
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              _pickImageWithCamera((file) {
+                                _salonImages.add(file);
+                                isSalonPicturesTaken = true;
+                              });
+                            },
+                            child: Container(
+                              padding: EdgeInsets.symmetric(vertical: 10.0),
+                              width: MediaQuery.of(context).size.width,
+                              decoration: BoxDecoration(
+                                  gradient: LinearGradient(colors: [
+                                    Color(0XFFB91635),
+                                    Color(0xff621d3c),
+                                    Color(0xff311937),
+                                  ]),
+                                  borderRadius: BorderRadius.circular(30.0)),
+                              child: Center(
+                                  child: Text(
+                                    "Take Pictures",
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 24.0,
+                                        fontWeight: FontWeight.bold),
+                                  )),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 20.0,
+                          ),
+                          if (_salonImages.isNotEmpty)
+                          // Display multiple images using a GridView or ListView
+                            Container(
+                              height: 100.0, // Adjust height as needed
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _salonImages.length,
+                                itemBuilder: (context, index) {
+                                  return Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Image.file(
+                                      _salonImages[index],
+                                      height: 100,
+                                      width: 100,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          SizedBox(
+                            height: 20.0,
+                          ),
+                          if (isSalonPicturesTaken)
+                            GestureDetector(
+                              onTap: () {
+                                if (_formkey.currentState!.validate()) {
+                                  setState(() {
+                                    mail = mailController.text;
+                                  });
+                                }
+                                saveImages();
+                                Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) => BookingBarber()));
+                              },
+                              child: Container(
+                                padding: EdgeInsets.symmetric(vertical: 10.0),
+                                width: MediaQuery.of(context).size.width,
+                                decoration: BoxDecoration(
+                                    gradient: LinearGradient(colors: [
+                                      Color(0XFFB91635),
+                                      Color(0xff621d3c),
+                                      Color(0xff311937),
+                                    ]),
+                                    borderRadius: BorderRadius.circular(30.0)),
+                                child: Center(
+                                    child: Text(
+                                      "Done",
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 24.0,
+                                          fontWeight: FontWeight.bold),
+                                    )),
+                              ),
+                            ),
+                        ]),
+                  ),
+                )
+              ],
+            ),
+          ),
+        ));
+  }
+}
