@@ -1,0 +1,233 @@
+import 'package:barber_pogi/pages/profile.dart';
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
+class Trainee extends StatefulWidget {
+  const Trainee({super.key});
+
+  @override
+  State<Trainee> createState() => _TraineeState();
+}
+
+class _TraineeState extends State<Trainee> {
+  bool isLoading = false; 
+  String? shopname;
+  String? username;
+  String? mail;
+
+  getthedatafromsharedpref() async {
+    shopname = await SharedpreferenceHelper().getShopName();
+    await SharedpreferenceHelper().saveShopName(shopname!);
+    //print("Shop Name Retrieved: $shopname"); // Check if this is null or not
+    username = await SharedpreferenceHelper().getUserName();
+    await SharedpreferenceHelper().saveUserName(username!);
+    mail = await SharedpreferenceHelper().getUserEmail();
+    setState(() {}); // Ensure state is updated
+  }
+
+  Future<void> _initializeUserData() async {
+    mail = await SharedpreferenceHelper().getUserEmail();
+  }
+  
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController fatherNameController = TextEditingController();
+  final TextEditingController fatherPhoneController = TextEditingController();
+  final TextEditingController motherNameController = TextEditingController();
+  final TextEditingController motherPhoneController = TextEditingController();
+  final TextEditingController presentAddressController = TextEditingController();
+  final TextEditingController permanentAddressController = TextEditingController();
+  final TextEditingController fieldOfInterestController = TextEditingController();
+  final TextEditingController pastExperienceController = TextEditingController();
+
+  final _formKey = GlobalKey<FormState>();
+
+  // Add trainee function to store data in Firestore
+
+
+  Future<void> addTrainee() async {
+    setState(() {
+      isLoading = true; // Start loading indicator
+    });
+
+    try {
+      // Collect form data
+      Map<String, dynamic> traineeData = {
+        'Username': username,
+        'email':mail,
+        'Shopname': shopname,
+        'phone': phoneController.text,
+        'father': fatherNameController.text,
+        'father_phone': fatherPhoneController.text,
+        'mother': motherNameController.text,
+        'mother_phone': motherPhoneController.text,
+        'present_address': presentAddressController.text,
+        'permanent_address': permanentAddressController.text,
+        'field_of_interest': fieldOfInterestController.text,
+        'past_experience': pastExperienceController.text,
+        'created_at': FieldValue.serverTimestamp(),  // Use Firestore timestamp
+      };
+
+      // Store the data in the Firestore 'trainees' collection
+      await FirebaseFirestore.instance.collection('trainees').add(traineeData);
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trainee added successfully!')),
+      );
+
+      phoneController.clear();
+      fatherNameController.clear();
+      fatherPhoneController.clear();
+      motherNameController.clear();
+      motherPhoneController.clear();
+      presentAddressController.clear();
+      permanentAddressController.clear();
+      fieldOfInterestController.clear();
+      pastExperienceController.clear();
+    } catch (e) {
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add trainee: $e')),
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getthedatafromsharedpref();
+    _initializeUserData();
+  }
+
+  getontheload() async {
+    await getthedatafromsharedpref();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SingleChildScrollView(
+        child: Container(
+          margin: const EdgeInsets.only(top: 50.0, left: 20.0, right: 20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Hello",
+                        style: TextStyle(
+                            color: Color.fromARGB(189, 0, 0, 0),
+                            fontSize: 24.0,
+                            fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        username ?? '',
+                        style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 24.0,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20.0),
+              const Divider(color: Colors.black),
+              const SizedBox(height: 20.0),
+              const Text(
+                "Please fill up the form to become a trainee",
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 24.0,
+                    fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20.0),
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    buildTextField("Phone number", phoneController),
+                    buildTextField("Father's Name", fatherNameController),
+                    buildTextField("Father's Phone number", fatherPhoneController),
+                    buildTextField("Mother's Name", motherNameController),
+                    buildTextField("Mother's Phone number", motherPhoneController),
+                    buildTextField("Present Address", presentAddressController),
+                    buildTextField("Permanent Address", permanentAddressController),
+                    buildTextField("Field of Interest", fieldOfInterestController),
+                    buildTextField("Past Experience", pastExperienceController),
+                    const SizedBox(height: 20.0),
+                    // Submit button with loading indicator
+                    isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : ElevatedButton(
+                            onPressed: () {
+                              if (_formKey.currentState!.validate()) {
+                                addTrainee();
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) => Profile()));  // Call addTrainee function
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFe29452),
+                              padding: const EdgeInsets.symmetric(vertical: 15.0),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                'Submit',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18.0,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildTextField(String labelText, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20.0),
+      child: TextFormField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: labelText,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          fillColor: const Color(0xFFe29452),
+          filled: true,
+        ),
+        validator: (value) {
+          if (value == null || value.isEmpty) {
+            return '$labelText is required';
+          }
+          return null;
+        },
+      ),
+    );
+  }
+}
