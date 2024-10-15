@@ -1,0 +1,340 @@
+import 'package:barber_pogi/pages/home.dart';
+import 'package:barber_pogi/pages/profile.dart';
+import 'package:barber_pogi/services/database.dart';
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
+class Booking extends StatefulWidget {
+  final String service;
+
+  Booking({required this.service});
+
+  @override
+  State<Booking> createState() => _BookingState();
+}
+
+class _BookingState extends State<Booking> {
+  String? username, image, email, shopName, salonId;
+  int avialableSeats = 0;
+  int totalSeats = 0;
+  DateTime selectedDate = DateTime.now();
+  TimeOfDay selectedTime = TimeOfDay.now();
+  bool isChecked = false; // Added for checkbox
+
+  @override
+  void initState() {
+    super.initState();
+    getUserData();
+  }
+
+  Future<void> _fetchShopName(String id) async {
+    try {
+      final shopDoc = await FirebaseFirestore.instance
+          .collection('barbers')
+          .where('Id', isEqualTo: id)
+          .limit(1)
+          .get();
+      if (shopDoc.docs.isNotEmpty) {
+        final shopData = shopDoc.docs.first.data();
+        shopName = shopData['Name'];
+        String? totalSeatsStr = shopData['Seat'];
+        totalSeats = int.tryParse(totalSeatsStr ?? '0') ?? 0;
+
+        print("$totalSeats");
+
+        setState(() {});
+      }
+    } catch (e) {
+      print("Error fetching shop name: $e");
+    }
+  }
+
+  Future<void> getUserData() async {
+    username = await SharedpreferenceHelper().getUserName();
+    image = await SharedpreferenceHelper().getUserImage();
+    email = await SharedpreferenceHelper().getUserEmail();
+    salonId = await SharedpreferenceHelper().getsalonId();
+    await _fetchShopName(salonId!);
+    setState(() {});
+  }
+
+  Future<void> _fetchAvailableSeats() async {
+    try {
+      final bookingDocs = await FirebaseFirestore.instance
+          .collection('Booking')
+          .where('SalonId', isEqualTo: salonId)
+          .where('Date',
+              isEqualTo:
+                  "${selectedDate.day}/${selectedDate.month}/${selectedDate.year}")
+          .where('Time', isEqualTo: selectedTime.format(context))
+          .get();
+      final bookedSeats = bookingDocs.docs.length;
+      avialableSeats = totalSeats - bookedSeats;
+
+      setState(() {});
+    } catch (e) {}
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    if (isChecked) { // Only allow date selection if checkbox is checked
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: selectedDate,
+        firstDate: DateTime.now(),
+        lastDate: DateTime(2025),
+      );
+
+      if (picked != null && picked != selectedDate) {
+        setState(() {
+          selectedDate = picked;
+        });
+        await _fetchAvailableSeats();
+      }
+    }
+  }
+
+  
+Future<void> _selectTime(BuildContext context) async {
+  if (isChecked) {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: selectedTime,
+    );
+
+    if (picked != null && picked != selectedTime) {
+      // Check if the selected date is today, and ensure the time is not earlier than the current time
+      if (selectedDate == DateTime.now() && picked.hour < TimeOfDay.now().hour) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("You cannot select a past time!")),
+        );
+      } else if (selectedDate == DateTime.now() && 
+                picked.hour == TimeOfDay.now().hour && 
+                picked.minute < TimeOfDay.now().minute) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("You cannot select a past time!")),
+        );
+      } else {
+        setState(() {
+          selectedTime = picked;
+        });
+        await _fetchAvailableSeats();
+      }
+    }
+  }
+}
+
+  Widget _buildDatePicker() {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 10.0),
+      decoration: BoxDecoration(
+        color: isChecked ? Color(0xFFb4817e) : Colors.grey, // Disable if unchecked
+        borderRadius: BorderRadius.circular(20.0),
+      ),
+      width: MediaQuery.of(context).size.width,
+      child: Column(
+        children: [
+          Text(
+            "Set a Date",
+            style: TextStyle(
+                color: Colors.black,
+                fontSize: 20.0,
+                fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 10.0),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => _selectDate(context),
+                child: Icon(
+                  Icons.calendar_month,
+                  color: Colors.white,
+                  size: 30.0,
+                ),
+              ),
+              SizedBox(width: 20.0),
+              Text(
+                "${selectedDate.day}/${selectedDate.month}/${selectedDate.year}",
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 30.0,
+                    fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimePicker() {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 10.0),
+      decoration: BoxDecoration(
+        color: isChecked ? Color(0xFFb4817e) : Colors.grey, // Disable if unchecked
+        borderRadius: BorderRadius.circular(20.0),
+      ),
+      width: MediaQuery.of(context).size.width,
+      child: Column(
+        children: [
+          Text(
+            "Set a Time",
+            style: TextStyle(
+                color: Colors.black,
+                fontSize: 20.0,
+                fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 10.0),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => _selectTime(context),
+                child: Icon(
+                  Icons.alarm,
+                  color: Colors.white,
+                  size: 30.0,
+                ),
+              ),
+              SizedBox(width: 20.0),
+              Text(
+                selectedTime.format(context),
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 30.0,
+                    fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFreeSeatsInfo() {
+    return avialableSeats >= 0
+        ? Text(
+            "Available Seats: $avialableSeats",
+            style: TextStyle(fontSize: 18.0, color: Colors.green),
+          )
+        : Text(
+          "No Seat Available",
+          style: TextStyle(fontSize: 18.0, color: Colors.red),
+        );
+  }
+
+  Widget _buildBookingButton() {
+  return Center(  // Center the button
+    child: GestureDetector(
+      onTap: () async {
+        if (username != null && email != null && isChecked) { // Only if checkbox is checked
+          Map<String, dynamic> userBookingMap = {
+            "Service": widget.service,
+            "Date":
+                "${selectedDate.day}/${selectedDate.month}/${selectedDate.year}",
+            "Time": selectedTime.format(context),
+            "Shopname": shopName,
+            "Username": username,
+            "SalonId": salonId,
+          };
+          await DatabaseMethods().addUserBooking(userBookingMap, email!);
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => Profile(),
+            ),
+          );
+        } else {
+          // Show error if username, email is null or checkbox is unchecked
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: User data incomplete or checkbox not checked.")),
+          );
+        }
+      },
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.6,
+        padding: EdgeInsets.symmetric(vertical: 15.0),
+        decoration: BoxDecoration(
+          color: isChecked ? Color(0xFFb4817e) : Colors.grey, // Disable if unchecked
+          borderRadius: BorderRadius.circular(30.0),
+        ),
+        child: Center(
+          child: Text(
+            "Done",
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 20.0,
+                fontWeight: FontWeight.bold),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SingleChildScrollView(
+        child: Container(
+          margin: EdgeInsets.only(left: 10.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 50.0),
+                  child: Icon(Icons.arrow_back_ios_new_rounded,
+                      color: Colors.black, size: 30.0),
+                ),
+              ),
+              SizedBox(height: 30.0),
+              Text(
+                "Let's the\njourney begin",
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 28.0,
+                    fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 20),
+              Divider(color: Colors.black,),
+              SizedBox(height: 20.0),
+              Row(
+                children: [
+                  Checkbox(
+                    value: isChecked,
+                    onChanged: (bool? value) {
+                      setState(() {
+                        isChecked = value ?? false;
+                      });
+                    },
+                  ),
+                  Expanded(
+                    child: Text(
+                      "করিলে বেশি তেড়িবেড়ি, পিছনে পড়িবে পুলিশের বাড়ি 😒",
+                      style: TextStyle(fontSize: 18.0, color: Colors.black),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 20.0),
+              _buildDatePicker(),
+              SizedBox(height: 20.0),
+              _buildTimePicker(),
+              SizedBox(height: 20.0),
+              _buildFreeSeatsInfo(),
+              SizedBox(height: 50.0),
+              _buildBookingButton(),
+              SizedBox(height: 50.0),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
