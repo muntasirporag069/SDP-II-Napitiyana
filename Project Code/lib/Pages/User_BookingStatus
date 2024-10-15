@@ -1,0 +1,116 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
+class UserBookingStatus extends StatefulWidget {
+  final String bookingId; // Booking ID to track
+  const UserBookingStatus({super.key, required this.bookingId});
+
+  @override
+  _UserBookingStatusState createState() => _UserBookingStatusState();
+}
+
+class _UserBookingStatusState extends State<UserBookingStatus> {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('Booking')
+          .doc(widget.bookingId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return Center(child: Text("No booking data available."));
+        }
+
+
+        var bookingData = snapshot.data!;
+        bool isServiceComplete = bookingData["isServiceComplete"] ?? false;
+
+        if (isServiceComplete) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showRatingDialog(bookingData["shopEmail"]);
+          });
+        }
+
+        return Center(
+          child: Text("Waiting for service to be marked as complete..."),
+        );
+      },
+    );
+  }
+
+  Future<void> _showRatingDialog(String shopEmail) async {
+    double? selectedRating;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Rate the Service"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("How would you rate the service?"),
+              SizedBox(height: 10),
+              DropdownButton<double>(
+                value: selectedRating,
+                items: List.generate(5, (index) {
+                  return DropdownMenuItem<double>(
+                    value: (index + 1).toDouble(),
+                    child: Text('${index + 1} Star'),
+                  );
+                }),
+                onChanged: (value) {
+                  setState(() {
+                    selectedRating = value;
+                  });
+                },
+                hint: Text("Select Rating"),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (selectedRating != null) {
+                  await _submitRating(shopEmail, selectedRating!);
+                  await FirebaseFirestore.instance
+                      .collection('bookings')
+                      .doc(widget.bookingId)
+                      .delete();
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text("Rating submitted successfully!"),
+                  ));
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text("Please select a rating."),
+                  ));
+                }
+              },
+              child: Text("Submit"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _submitRating(String shopEmail, double rating) async {
+    await FirebaseFirestore.instance
+        .collection('barbers')
+        .doc(shopEmail)
+        .collection('ratings')
+        .add({'rating': rating, 'timestamp': FieldValue.serverTimestamp()});
+  }
+}
