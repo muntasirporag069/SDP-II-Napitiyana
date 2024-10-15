@@ -1,0 +1,482 @@
+import 'package:barber_pogi/Barber/update_gallery.dart';
+import 'package:barber_pogi/services/database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:flutter/material.dart';
+
+class BookingBarber extends StatefulWidget {
+  const BookingBarber({super.key});
+
+  @override
+  State<BookingBarber> createState() => _BookingBarberState();
+}
+
+class _BookingBarberState extends State<BookingBarber> {
+  Stream<QuerySnapshot>? customerBookingStream; // Stream for customer bookings
+  Stream<QuerySnapshot>? traineeBookingStream; // Stream for trainee bookings
+  Stream<QuerySnapshot>? feedbackStream; // Stream for feedbacks
+  Stream<QuerySnapshot>? currentBookingStream; // Stream for current selection
+  String? shopemail;
+  String? shopname;
+
+  bool isCustomerSelected = true; // To track customer bookings selection
+  bool isFeedbackSelected = false; // To track feedbacks selection
+
+  // Fetch shop name using email
+  Future<void> _fetchShopname(String shopemail) async {
+    try {
+      final shopDoc = await FirebaseFirestore.instance
+          .collection('barbers')
+          .where("Email", isEqualTo: shopemail)
+          .limit(1)
+          .get();
+      if (shopDoc.docs.isNotEmpty) {
+        final shopData = shopDoc.docs.first.data();
+        setState(() {
+          shopname = shopData['Name'];
+        });
+      }
+    } catch (e) {
+      print("Failed to fetch barbershop name");
+    }
+  }
+
+  // Load shop email, fetch shop name, and initialize booking stream
+  Future<void> getontheload() async {
+    shopemail = await SharedpreferenceHelper().getBarberEmail();
+    if (shopemail != null) {
+      await _fetchShopname(shopemail!);
+      print("$shopname"); // Fetch shop name using shop email
+      if (shopname != null) {
+        print("$shopname");
+        customerBookingStream = DatabaseMethods().getBookingsForShop(shopname!);
+        traineeBookingStream =
+            DatabaseMethods().getTraineeBookingsForShop(shopname!);
+        feedbackStream = DatabaseMethods().getFeedbacksForShop(shopname!);
+        currentBookingStream =
+            customerBookingStream; // Default to customer bookings
+        setState(() {});
+      }
+    }
+  }
+
+  // Change booking type
+  void changeBookingType(bool isCustomer) {
+    setState(() {
+      isCustomerSelected = isCustomer;
+      isFeedbackSelected = false; // Reset feedback selection when toggling
+      currentBookingStream = isCustomer
+          ? customerBookingStream
+          : traineeBookingStream; // Switch between customer and trainee bookings
+    });
+  }
+
+  // View feedbacks
+  void viewFeedbacks() {
+    setState(() {
+      isFeedbackSelected = true;
+      currentBookingStream = feedbackStream; // Show feedbacks
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getontheload();
+  }
+
+  // StreamBuilder for bookings and feedbacks list
+  Widget allBookings() {
+    if (currentBookingStream == null) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: currentBookingStream,
+      builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(child: Text("No bookings or feedbacks available."));
+        }
+
+        // If feedbacks are selected
+        if (isFeedbackSelected) {
+          return ListView.builder(
+            padding: EdgeInsets.zero,
+            itemCount: snapshot.data!.docs.length,
+            scrollDirection: Axis.vertical,
+            shrinkWrap: true,
+            itemBuilder: (context, index) {
+              DocumentSnapshot ds = snapshot.data!.docs[index];
+
+              String feedback = ds["Feedback"] ?? "No feedback provided";
+              String rating = ds["Rating"]?.toString() ?? "N/A";
+              String username = ds["UserName"] ?? "N/A";
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Material(
+                  elevation: 8.0,
+                  borderRadius: BorderRadius.circular(60),
+                  child: Container(
+                    padding: EdgeInsets.all(10.0),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        Color(0XFFB91635),
+                        Color(0xff621d3c),
+                        Color(0xff311937),
+                      ]),
+                      borderRadius: BorderRadius.circular(60),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Feedback: $feedback",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20.0,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 5.0),
+                        Text(
+                          "Rating: $rating",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20.0,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 5.0),
+                        Text(
+                          "UserName: $username",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20.0,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        }
+
+        // For bookings (customer or trainee)
+        return ListView.builder(
+          padding: EdgeInsets.zero,
+          itemCount: snapshot.data!.docs.length,
+          scrollDirection: Axis.vertical,
+          shrinkWrap: true,
+          itemBuilder: (context, index) {
+            DocumentSnapshot ds = snapshot.data!.docs[index];
+            String shopnamefromdatabase = ds["Shopname"] ?? "N/A";
+            if (shopname != null && shopname == shopnamefromdatabase) {
+              // For customer bookings
+              if (isCustomerSelected) {
+                String username = ds["Username"] ?? "N/A";
+                String service = ds["Service"] ?? "N/A";
+                String date = ds["Date"] ?? "N/A";
+                String time = ds["Time"] ?? "N/A";
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Material(
+                    elevation: 8.0,
+                    borderRadius: BorderRadius.circular(60),
+                    child: Container(
+                      padding: EdgeInsets.all(10.0),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          Color(0XFFB91635),
+                          Color(0xff621d3c),
+                          Color(0xff311937),
+                        ]),
+                        borderRadius: BorderRadius.circular(60),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(height: 10.0),
+                                Text(
+                                  "Service: $service",
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20.0,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                SizedBox(height: 5.0),
+                                Text(
+                                  "Username: $username",
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20.0,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                SizedBox(height: 5.0),
+                                Text(
+                                  "Date: $date",
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20.0,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                SizedBox(height: 5.0),
+                                Text(
+                                  "Time: $time",
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20.0,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () async {
+                              await DatabaseMethods().deleteBooking(ds.id);
+                            },
+                            child: Container(
+                              padding: EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFdf711a),
+                                  borderRadius: BorderRadius.circular(10.0)),
+                              child: Text(
+                                "Done",
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20.0,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            height: 10.0,
+                          ),
+                          GestureDetector(
+                            onTap: () async {
+                              await DatabaseMethods().deleteBooking(ds.id);
+                            },
+                            child: Container(
+                              padding: EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                  color: Color(0xFFdf711a),
+                                  borderRadius: BorderRadius.circular(10.0)),
+                              child: Text(
+                                "Cancel",
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20.0,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              } else {
+                // For trainee bookings
+                String email = ds["email"] ?? "N/A";
+                String father = ds["father"] ?? "N/A";
+                String father_phone = ds["father_phone"] ?? "N/A";
+                String phone = ds["phone"] ?? "N/A";
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Material(
+                    elevation: 8.0,
+                    borderRadius: BorderRadius.circular(60),
+                    child: Container(
+                      padding: EdgeInsets.all(10.0),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [
+                          Color(0XFFB91635),
+                          Color(0xff621d3c),
+                          Color(0xff311937),
+                        ]),
+                        borderRadius: BorderRadius.circular(60),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Trainee: $email",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20.0,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 5.0),
+                          Text(
+                            "Father: $father",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20.0,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 5.0),
+                          Text(
+                            "Father Phone: $father_phone",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20.0,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 5.0),
+                          Text(
+                            "Phone: $phone",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20.0,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+            } else {
+              return Container();
+            }
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0.0,
+        title: Text(
+          "Bookings & Feedback",
+          style: TextStyle(color: Colors.white, fontSize: 25.0),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0),
+          child: Column(
+            children: [
+              // Booking selection buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        changeBookingType(true); // Customer bookings
+                      },
+                      child: Container(
+                        padding: EdgeInsets.all(15.0),
+                        decoration: BoxDecoration(
+                          color: isCustomerSelected
+                              ? Color(0xffb91635)
+                              : Colors.grey[600],
+                          borderRadius: BorderRadius.circular(30.0),
+                        ),
+                        child: Center(
+                          child: Text(
+                            "Customer Bookings",
+                            style:
+                            TextStyle(color: Colors.white, fontSize: 20.0),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 10.0),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        changeBookingType(false); // Trainee bookings
+                      },
+                      child: Container(
+                        padding: EdgeInsets.all(15.0),
+                        decoration: BoxDecoration(
+                          color: isCustomerSelected
+                              ? Colors.grey[600]
+                              : Color(0xffb91635),
+                          borderRadius: BorderRadius.circular(30.0),
+                        ),
+                        child: Center(
+                          child: Text(
+                            "Trainee Bookings",
+                            style:
+                            TextStyle(color: Colors.white, fontSize: 20.0),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 10.0),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    UpdateGallery())); // Trainee bookings
+                      },
+                      child: Container(
+                        padding: EdgeInsets.all(15.0),
+                        decoration: BoxDecoration(
+                          color: isCustomerSelected
+                              ? Colors.grey[600]
+                              : Color(0xffb91635),
+                          borderRadius: BorderRadius.circular(30.0),
+                        ),
+                        child: Center(
+                          child: Text(
+                            "Update Gallery",
+                            style:
+                            TextStyle(color: Colors.white, fontSize: 20.0),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 20.0),
+              // Feedback button
+              GestureDetector(
+                onTap: viewFeedbacks, // Show feedbacks
+                child: Container(
+                  padding: EdgeInsets.all(15.0),
+                  decoration: BoxDecoration(
+                    color: isFeedbackSelected
+                        ? Color(0xffb91635)
+                        : Colors.grey[600],
+                    borderRadius: BorderRadius.circular(30.0),
+                  ),
+                  child: Center(
+                    child: Text(
+                      "Feedbacks",
+                      style: TextStyle(color: Colors.white, fontSize: 20.0),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: 20.0),
+              // Display bookings or feedbacks list
+              allBookings(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
