@@ -1,0 +1,331 @@
+import 'package:barber_pogi/pages/login.dart';
+import 'package:barber_pogi/pages/taking_picture.dart';
+import 'package:barber_pogi/services/database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:random_string/random_string.dart';
+
+class Signup extends StatefulWidget {
+  const Signup({super.key});
+
+  @override
+  State<Signup> createState() => _SignupState();
+}
+
+class _SignupState extends State<Signup> {
+  String? name, mail, password, status;
+  TextEditingController namecontroller = TextEditingController();
+  TextEditingController emailcontroller = TextEditingController();
+  TextEditingController passwordcontroller = TextEditingController();
+
+  final _formkey = GlobalKey<FormState>();
+
+  registration() async {
+    if (_formkey.currentState!.validate()) {
+      setState(() {
+        mail = emailcontroller.text;
+        name = namecontroller.text;
+        password = passwordcontroller.text;
+      });
+
+      if (password != null && name != null && mail != null) {
+        try {
+          UserCredential userCredential = await FirebaseAuth.instance
+              .createUserWithEmailAndPassword(
+              email: mail!, password: password!);
+          String userId = userCredential.user!.uid;
+
+         // String id = randomAlphaNumeric(10);
+          Map<String, dynamic> userInfoMap = {
+            "Name": namecontroller.text,
+            "Email": emailcontroller.text,
+            "Id": userId,
+            "Status": "Not Approved"
+          };
+
+          await DatabaseMethods().addUserDetails(userInfoMap, userId);
+
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => TakingPicture()));
+
+          namecontroller.clear();
+          emailcontroller.clear();
+          passwordcontroller.clear();
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'weak-password') {
+            showErrorSnackbar("Password Provided is too weak");
+          } else if (e.code == "email-already-in-use") {
+            showErrorSnackbar("Account Already exists");
+          } else {
+            showErrorSnackbar("An unexpected error occurred: ${e.message}");
+          }
+        } catch (e) {
+          showErrorSnackbar("An error occurred: $e");
+        }
+      } else {
+        showErrorSnackbar("Please fill out all fields");
+      }
+    }
+
+    emailcontroller.clear();
+    namecontroller.clear();
+    passwordcontroller.clear();
+  }
+
+  void showErrorSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        message,
+        style: TextStyle(fontSize: 20.0),
+      ),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Brown and Maroon background with "S" shape curve
+          Container(
+            color: const Color(0xFF3E2723), // Brown background
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: ClipPath(
+              clipper: SShapeClipper(), // Custom clipper for the maroon part
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.75,
+                color: const Color(0xFF4E342E), // Maroon color
+              ),
+            ),
+          ),
+          SingleChildScrollView(
+            child: Column(
+              children: [
+                // "Create Your Account" text at the center of the top section
+                Container(
+                  padding: const EdgeInsets.only(top: 50.0),
+                  height: MediaQuery.of(context).size.height / 4,
+                  width: MediaQuery.of(context).size.width,
+                  child: const Center(
+                    child: Text(
+                      "Create Your\nAccount",
+                      style: TextStyle(
+                        color: Color(0xFFE29452), // Orange color for the text
+                        fontSize: 32.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.only(
+                      top: 40.0, left: 30.0, right: 30.0, bottom: 30.0),
+                  margin: EdgeInsets.only(
+                      top: MediaQuery.of(context).size.height / 8),
+                  height: MediaQuery.of(context).size.height,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(40),
+                      topRight: Radius.circular(40),
+                    ),
+                  ),
+                  child: Form(
+                    key: _formkey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Name Field
+                        buildInputField("Name", namecontroller, Icons.person_outlined),
+                        const SizedBox(height: 40.0),
+
+                        // Email Field
+                        buildInputField("Gmail", emailcontroller, Icons.mail_outline),
+                        const SizedBox(height: 40.0),
+
+                        // Password Field
+                        buildPasswordField(),
+                        const SizedBox(height: 60.0),
+
+                        // Submit Button
+                        GestureDetector(
+                          onTap: registration,
+                          child: buildButton(),
+                        ),
+                        const SizedBox(height: 80.0),
+
+                        buildLoginPrompt(),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Reusable input field method
+  Widget buildInputField(
+      String label, TextEditingController controller, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFFE29452), // Orange color
+            fontSize: 23.0,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        TextFormField(
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return "Please Enter $label";
+            }
+            return null;
+          },
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: label,
+            prefixIcon: Icon(icon, color: Color(0xFFE29452)), // Orange icon
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFE29452)), // Orange underline
+            ),
+            enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFE29452)), // Orange underline
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Password Field
+  Widget buildPasswordField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Password",
+          style: TextStyle(
+            color: Color(0xFFE29452), // Orange color
+            fontSize: 23.0,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        TextFormField(
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return "Please Enter Password";
+            }
+            return null;
+          },
+          controller: passwordcontroller,
+          decoration: const InputDecoration(
+            hintText: "Password",
+            prefixIcon: Icon(Icons.password_outlined, color: Color(0xFFE29452)), // Orange icon
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFE29452)), // Orange underline
+            ),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFE29452)), // Orange underline
+            ),
+          ),
+          obscureText: true,
+        ),
+      ],
+    );
+  }
+
+  // Submit Button Widget
+  Widget buildButton() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
+      width: MediaQuery.of(context).size.width,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE29452), // Orange button
+        borderRadius: BorderRadius.circular(30.0),
+      ),
+      child: const Center(
+        child: Text(
+          "Take Your Pictures",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 24.0,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildLoginPrompt() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end, // Aligns content to the right
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Text(
+              "Already have an account",
+              style: TextStyle(
+                color: Color(0xFFE29452), // Orange color
+                fontSize: 17.0,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => LogIN()),
+                );
+              },
+              child: const Text(
+                "Sign In",
+                style: TextStyle(
+                  color: Color(0xFFE29452), // Orange color
+                  fontSize: 22.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// Custom clipper for the "S"-shaped curve between brown and maroon
+class SShapeClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    var path = Path();
+
+    // Left side lower
+    path.lineTo(0, size.height * 0.8);
+
+    // S-shape curve, right side higher
+    path.quadraticBezierTo(size.width * 0.3, size.height * 0.9, size.width * 0.65, size.height * 0.7);
+    path.quadraticBezierTo(size.width * 0.85, size.height * 0.6, size.width, size.height * 0.65);
+
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) {
+    return false;
+  }
+}
