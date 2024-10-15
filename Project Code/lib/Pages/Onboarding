@@ -1,0 +1,112 @@
+import 'package:barber_pogi/pages/landing_page.dart';
+import 'package:flutter/material.dart';
+
+class Onboarding extends StatefulWidget {
+  const Onboarding({super.key});
+
+  @override
+  State<Onboarding> createState() => _OnboardingState();
+}
+
+class _OnboardingState extends State<Onboarding> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Brown background (entire page)
+          Container(
+            color: const Color(0xFF3E2723), // Brown color
+          ),
+          // Maroon color with subtle "S"-shaped transition, lifted higher on the right side
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: ClipPath(
+              clipper: SShapeClipper(), // Custom clipper for an "S"-shaped curve
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.75, // Maroon section
+                color: const Color(0xFF4E342E), // Maroon color
+              ),
+            ),
+          ),
+          // Scrollable content
+          SingleChildScrollView(
+            child: Container(
+              margin: const EdgeInsets.only(top: 80.0), // Lifted button and content higher
+              child: Column(
+                children: [
+                  Image.asset(
+                    "images/splash_image.png",
+                    height: 500, // Adjusted image height to fit content better
+                    width: 400,
+                  ),
+                  const SizedBox(height: 40), // Added space above button
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => LandingPage()),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20.0, vertical: 10.0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE29452), // Orange color for the button
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 5,
+                            spreadRadius: 5,
+                            offset: Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Text(
+                        "Get a stylish Haircut",
+                        style: TextStyle(
+                          color: Colors.white, // White text for contrast
+                          fontSize: 22.0,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Custom clipper to create an "S"-shaped curve between brown and maroon
+class SShapeClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    var path = Path();
+
+    // Start from the bottom left, slightly lower
+    path.lineTo(0, size.height * 0.8); // Left side lower
+
+    // Create an "S"-shaped curve, lifting the right side higher
+    path.quadraticBezierTo(size.width * 0.3, size.height * 0.9, size.width * 0.65, size.height * 0.7);
+    path.quadraticBezierTo(size.width * 0.85, size.height * 0.6, size.width, size.height * 0.65); // Right side higher
+
+    // Finish the bottom right
+    path.lineTo(size.width, 0);
+
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) {
+    return false;
+  }
+}
