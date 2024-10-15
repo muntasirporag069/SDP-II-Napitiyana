@@ -1,0 +1,413 @@
+import 'package:barber_pogi/pages/home.dart';
+import 'package:barber_pogi/services/database.dart';
+import 'package:barber_pogi/services/shared_pref.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter/material.dart';
+
+class LocateUser extends StatefulWidget {
+  const LocateUser({super.key});
+
+  @override
+  State<LocateUser> createState() => _LocateUserState();
+}
+
+class _LocateUserState extends State<LocateUser> {
+  String? shopName, salonId;
+  String? email;
+  String? username;
+  String? userImageUrl;
+  double? userLatitude;
+  double? userLongitude;
+  double _selectedRadius = 0.5; // Default radius in km
+  List<Map<String, dynamic>> salons = [];
+
+  final TextEditingController shopNameController = TextEditingController();
+  final TextEditingController usernameController = TextEditingController();
+
+  final List<double> _radii = [0.5, 1.0, 5.0, 10.0]; // Radius options in km
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeUserData();
+  }
+
+  Future<void> _initializeUserData() async {
+    email = await SharedpreferenceHelper().getUserEmail();
+    if (email != null) {
+      await _fetchUserDetails(email!);
+      await _fetchUserImage(email!);
+      await _locateMe();
+    } else {
+      print('Email is null');
+    }
+  }
+
+  Future<void> _fetchUserDetails(String email) async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .where('Email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (userDoc.docs.isNotEmpty) {
+        final userData = userDoc.docs.first.data();
+        setState(() async {
+          username = userData['Name'];
+          await SharedpreferenceHelper().saveUserName(username!);
+        });
+      }
+    } catch (e) {
+      //_showSnackBar("Failed to fetch user details. Error: $e");
+    }
+  }
+
+  Future<void> _fetchUserImage(String email) async {
+    try {
+      final imageDoc = await FirebaseFirestore.instance
+          .collection('Images')
+          .where('Gmail', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (imageDoc.docs.isNotEmpty) {
+        final imageData = imageDoc.docs.first.data();
+        setState(() {
+          userImageUrl = imageData['SelfImageUrl'];
+        });
+        await SharedpreferenceHelper().saveUserImage(userImageUrl!);
+      }
+    } catch (e) {
+      // _showSnackBar("Failed to fetch user image. Error: $e");
+    }
+  }
+
+  Future<void> _locateMe() async {
+    await _getLocationPermission();
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        userLatitude = position.latitude;
+        userLongitude = position.longitude;
+      });
+
+      await _fetchSalons();
+    } catch (e) {
+      //_showSnackBar("Failed to get location. Please enable location services.");
+    }
+  }
+
+  Future<void> _fetchSalons() async {
+    if (userLatitude == null || userLongitude == null) return;
+
+    try {
+      final querySnapshot =
+      await FirebaseFirestore.instance.collection('barbers').get();
+      List<Map<String, dynamic>> fetchedSalons = [];
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final double salonLatitude =
+            double.tryParse(data['Latitude'].toString()) ?? 0.0;
+        final double salonLongitude =
+            double.tryParse(data['Longitude'].toString()) ?? 0.0;
+        final distance = Geolocator.distanceBetween(
+          userLatitude!,
+          userLongitude!,
+          salonLatitude,
+          salonLongitude,
+        );
+
+        if (distance <= _selectedRadius * 1000) {
+          fetchedSalons.add({
+            'Id': data['Id'],
+            'Name': data['Name'],
+            'Distance': distance,
+            'MaxSeats': data['Seat'] ?? 'Unknown',
+            //'AverageRating': getAverageRating(data['Name'])
+          });
+        }
+      }
+
+      setState(() {
+        salons = fetchedSalons;
+      });
+    } catch (e) {
+      _showSnackBar("Failed to fetch salons. Error: $e");
+    }
+  }
+
+  // Request location permissions
+  Future<void> _getLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return Future.error('Location services are disabled.');
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Location permissions are denied');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error('Location permissions are permanently denied');
+    }
+  }
+
+  // Show SnackBar for error messages
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: TextStyle(fontSize: 20.0),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        margin: EdgeInsets.only(top: 50.0, left: 20.0, right: 20.0),
+        child: Column(
+          children: [
+            // Welcome and user details
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Welcome",
+                      style: TextStyle(
+                          color: Color.fromARGB(189, 0, 0, 0),
+                          fontSize: 24.0,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    Text(
+                      username ?? "Loading...",
+                      style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 24.0,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: userImageUrl != null
+                      ? Image.network(
+                    userImageUrl!,
+                    height: 60,
+                    width: 60,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(Icons.person,
+                          size: 60, color: Colors.grey);
+                    },
+                  )
+                      : Icon(Icons.person, size: 60, color: Colors.grey),
+                ),
+              ],
+            ),
+            SizedBox(height: 20.0),
+            Divider(color: Colors.black),
+            SizedBox(height: 20.0),
+
+            // "Salons" title
+            Text(
+              "Salons",
+              style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 24.0,
+                  fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 20.0),
+            Row(
+              children: [
+                Flexible(
+                  fit: FlexFit.tight,
+                  child: GestureDetector(
+                    onTap: _locateMe,
+                    child: Container(
+                      height: 50,
+                      decoration: BoxDecoration(
+                          color: Color(0xFFe29452),
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Center(
+                        child: Text(
+                          "Locate Me",
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 18.0,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 16.0),
+                DropdownButton<double>(
+                  value: _selectedRadius,
+                  items: _radii.map((double radius) {
+                    return DropdownMenuItem<double>(
+                      value: radius,
+                      child: Text('$radius km'),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _selectedRadius = value;
+                      });
+                      _fetchSalons();
+                    }
+                  },
+                  hint: Text('Select Radius'),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.0),
+
+            // Salons list
+            Expanded(
+              child: ListView.builder(
+                itemCount: salons.length,
+                itemBuilder: (context, index) {
+                  final salon = salons[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Material(
+                      elevation: 8.0,
+                      borderRadius: BorderRadius.circular(60),
+                      child: Container(
+                        padding: EdgeInsets.all(10.0),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Color(0XFFB91635),
+                              Color(0xff621d3c),
+                              Color(0xff311937),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(60),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color.fromARGB(255, 164, 160, 160),
+                              blurRadius: 2,
+                              spreadRadius: 2.5,
+                              offset: Offset(5, 4),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(width: 10.0),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 20.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      salon['Name'],
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2.5),
+                                    Text(
+                                      '${(salon['Distance'] / 1000).toStringAsFixed(2)} km away',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18.0,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2.5),
+                                    // Use FutureBuilder to fetch the rating
+                                    FutureBuilder<double>(
+                                      future: getAverageRating(salon['Name']),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.connectionState ==
+                                            ConnectionState.waiting) {
+                                          return CircularProgressIndicator(); // Show loading indicator
+                                        } else if (snapshot.hasError) {
+                                          return Text(
+                                            'Error: ${snapshot.error}',
+                                            style:
+                                            TextStyle(color: Colors.white),
+                                          );
+                                        } else {
+                                          return Text(
+                                            'Ratings: ${snapshot.data?.toStringAsFixed(1) ?? 'N/A'}',
+                                            style:
+                                            TextStyle(color: Colors.white),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                    SizedBox(height: 2.5),
+                                    Text(
+                                      'Max Seats: ${salon['MaxSeats'] ?? 'Unknown'}',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18.0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                shopName = salon['Name'];
+                                salonId = salon['Id'];
+                                await SharedpreferenceHelper()
+                                    .saveSalonId(salonId!);
+                                await SharedpreferenceHelper()
+                                    .saveShopName(shopName!);
+                                Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (context) => Home()));
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Color(0xFFe29452),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                              ),
+                              child: Text(
+                                'Book Now',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16.0,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
