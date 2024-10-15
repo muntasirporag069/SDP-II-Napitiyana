@@ -1,0 +1,278 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class DatabaseMethods {
+  Future<void> addUserDetails(
+      Map<String, dynamic> userInfoMap, String id) async {
+    await FirebaseFirestore.instance
+        .collection("users")
+        .doc(id)
+        .set(userInfoMap);
+  }
+
+  Future<void> addBarberDetails(
+      Map<String, dynamic> userInfoMap, String id) async {
+    await FirebaseFirestore.instance
+        .collection("barbers")
+        .doc(id)
+        .set(userInfoMap);
+  }
+
+  Future<void> addUserBooking(
+      Map<String, dynamic> userBookingMap, String emailParam) async {
+    // Include the shopName and email in the userBookingMap
+    userBookingMap["email"] = emailParam;
+
+    // Debugging: Print the map to check values before saving
+    print("User Booking Map before saving: $userBookingMap");
+
+    await FirebaseFirestore.instance.collection("Booking").add(userBookingMap);
+  }
+
+  Future<void> saveImage(Map<String, dynamic> userImages) async {
+    await FirebaseFirestore.instance.collection("Images").add(userImages);
+  }
+
+  Future<void> saveSalonImage(Map<String, dynamic> barberImages) async {
+    await FirebaseFirestore.instance.collection("Images").add(barberImages);
+  }
+
+  Future<void> deleteBooking(String id) async {
+    await FirebaseFirestore.instance.collection("Booking").doc(id).delete();
+  }
+
+  Future<void> deleteBarber(String id) async {
+    await FirebaseFirestore.instance.collection("barbers").doc(id).delete();
+  }
+
+  Future<void> deleteUser(String id) async {
+    await FirebaseFirestore.instance.collection("users").doc(id).delete();
+  }
+
+  Future<int> getBookingCountForSlot(
+      {required String date,
+        required String time,
+        required String salonId}) async {
+    try {
+      // Query Firestore for bookings that match the given date and time
+      QuerySnapshot bookingsSnapshot = await FirebaseFirestore.instance
+          .collection("Booking")
+          .where("Date", isEqualTo: date)
+          .where("Time", isEqualTo: time)
+          .get();
+
+      // Return the count of matching bookings
+      return bookingsSnapshot.docs.length;
+    } catch (e) {
+      print("Error fetching booking count: $e");
+      return 0; // Return 0 if an error occurs
+    }
+  }
+
+  Stream<QuerySnapshot> getBookingsUser(String email) {
+    return FirebaseFirestore.instance
+        .collection('Booking')
+        .where('email', isEqualTo: email)
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getalluser() {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getallbarber() {
+    return FirebaseFirestore.instance
+        .collection('barbers')
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getBookingsForShop(String shopname) {
+    return FirebaseFirestore.instance
+        .collection('Booking')
+        .where('Shopname', isEqualTo: shopname)
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getTraineeBookingsForShop(String shopname) {
+    return FirebaseFirestore.instance
+        .collection('trainees') // Adjust the collection name as needed
+        .where('Shopname', isEqualTo: shopname)
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getFeedbacksForShop(String shopname) {
+    return FirebaseFirestore.instance
+        .collection('feedback') // Adjust the collection name as needed
+        .where('ShopName', isEqualTo: shopname)
+        .snapshots();
+  }
+
+  Future<int> getAvailableSeats({
+    required String salonId,
+    required String date,
+    required String time,
+  }) async {
+    DocumentSnapshot salonSnapshot = await FirebaseFirestore.instance
+        .collection('barbers')
+        .doc(salonId)
+        .get();
+
+    // Check if salonSnapshot exists and contains data
+    if (!salonSnapshot.exists) {
+      throw Exception('Salon not found.');
+    }
+
+    final salonData = salonSnapshot.data() as Map<String, dynamic>?;
+
+    // Check if maxSeats key exists
+    if (salonData == null || !salonData.containsKey('maxSeats')) {
+      throw Exception('Max seats information is not available for this salon.');
+    }
+
+    // Get the total number of seats for the salon
+    int totalSeats = salonData['maxSeats'];
+
+    // Query Firestore to get bookings for the specified date and time for this salon
+    QuerySnapshot bookingSnapshot = await FirebaseFirestore.instance
+        .collection('Booking') // Ensure this matches your collection name
+        .where('Shopname',
+        isEqualTo:
+        salonId) // Adjusted from 'Id' to 'Shopname' for consistency
+        .where('Date', isEqualTo: date)
+        .where('Time', isEqualTo: time)
+        .get();
+
+    // Subtract the number of booked seats from total seats
+    int bookedSeats = bookingSnapshot.docs.length;
+
+    // Calculate the available seats
+    int availableSeats = totalSeats - bookedSeats;
+
+    return availableSeats; // Return the number of available seats
+  }
+
+  Future<List<String>> getAvailableTimeSlots({
+    required String salonId,
+    required String date,
+    required String time,
+  }) async {
+    try {
+      // Fetch salon details to get operating hours
+      DocumentSnapshot salonSnapshot = await FirebaseFirestore.instance
+          .collection('barbers')
+          .doc(salonId)
+          .get();
+
+      if (!salonSnapshot.exists) {
+        throw Exception('Salon not found.');
+      }
+
+      final salonData = salonSnapshot.data() as Map<String, dynamic>?;
+
+      // Get operating hours from salon data
+      if (salonData == null || !salonData.containsKey('operatingHours')) {
+        throw Exception(
+            'Operating hours information is not available for this salon.');
+      }
+
+      List<String> availableTimeSlots = [];
+      List<dynamic> operatingHours = salonData['operatingHours'];
+
+      // Check existing bookings for the selected date
+      QuerySnapshot bookingsSnapshot = await FirebaseFirestore.instance
+          .collection('Booking')
+          .where('Date', isEqualTo: date)
+          .where('Shopname', isEqualTo: salonId)
+          .get();
+
+      // Get booked times
+      List bookedTimes =
+      bookingsSnapshot.docs.map((doc) => doc['Time']).toList();
+
+      // Iterate through operating hours and check against booked times
+      for (var hour in operatingHours) {
+        if (!bookedTimes.contains(hour)) {
+          availableTimeSlots.add(hour);
+        }
+      }
+
+      return availableTimeSlots;
+    } catch (e) {
+      print("Error fetching available time slots: $e");
+      return []; // Return an empty list if an error occurs
+    }
+  }
+  Future<void> updateUser(String userId) async {
+    try {
+      DocumentReference userDoc = await FirebaseFirestore.instance.collection('users').doc(userId);
+      DocumentSnapshot snapshot = await userDoc.get();
+      if (snapshot.exists && snapshot.data() != null) {
+        String currentStatus = snapshot.get('Status') ?? '';
+        if (currentStatus == "Not Approved") {
+          await userDoc.update({'Status': 'Approved'});
+          print('User status updated to Approved.');
+        } else {
+          print('User status is already approved or different.');
+        }
+      } else {
+        print('User does not exist or has no data.');
+      }
+    } catch (e) {
+      print('Failed to update user status: $e');
+    }
+  }
+
+  Future<void> updateBarber(String userId) async {
+    try {
+      DocumentReference userDoc = await FirebaseFirestore.instance.collection('barbers').doc(userId);
+      DocumentSnapshot snapshot = await userDoc.get();
+      if (snapshot.exists && snapshot.data() != null) {
+        String currentStatus = snapshot.get('Status') ?? '';
+        if (currentStatus == "Not Approved") {
+          await userDoc.update({'Status': 'Approved'});
+          print('User status updated to Approved.');
+        } else {
+          print('User status is already approved or different.');
+        }
+      } else {
+        print('User does not exist or has no data.');
+      }
+    } catch (e) {
+      print('Failed to update user status: $e');
+    }
+  }
+}
+
+Future<void> addFeedback(Map<String, dynamic> feedbackData) async {
+  try {
+    await FirebaseFirestore.instance
+        .collection('feedback')
+        .add(feedbackData);
+    print("Feedback added successfully.");
+  } catch (e) {
+    print("Error adding feedback: $e");
+  }
+}
+
+Future<double> getAverageRating(String shopName) async {
+  try {
+    final feedbackDocs = await FirebaseFirestore.instance
+        .collection('feedback') // Replace with your feedback collection
+        .where('ShopName', isEqualTo: shopName)
+        .get();
+
+    if (feedbackDocs.docs.isNotEmpty) {
+      double totalRating = 0.0;
+      int count = feedbackDocs.docs.length;
+
+      for (var doc in feedbackDocs.docs) {
+        totalRating += doc['Rating'];
+      }
+      return totalRating / count; // Calculate average
+    }
+  } catch (e) {
+    print("Error fetching average rating: $e");
+  }
+  return 0.0; // Return 0 if no ratings found
+}
